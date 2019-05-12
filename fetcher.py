@@ -18,7 +18,7 @@ DEFAULT_CREDS_FILENAME = "twitter_credentials.json"
 
 REQUIRED_FIELDS = ['CONSUMER_KEY',   
                    'CONSUMER_SECRET',
-                   'ACCESS_TOKEN',   
+                   'ACCESS_TOKEN',
                    'ACCESS_SECRET']
 
 # TODO: receive option from command line
@@ -34,6 +34,7 @@ def process_tweet(tweet):
 
 class TwitterStreamer(tw.TwythonStreamer):
     logger = logging.getLogger('TwitterStreamer')
+    PRINT_DELTA = 100
     
     def __init__(self, creds, outfile, disconnect_on_failure=False):
         super(TwitterStreamer, self).__init__(
@@ -45,6 +46,7 @@ class TwitterStreamer(tw.TwythonStreamer):
         
         TwitterStreamer.logger.debug("credentials in costructor: %s", creds)
         TwitterStreamer.logger.debug("will disconnect on failure: %s", disconnect_on_failure)
+        self.iteration = 0
         self.disconnect_on_failure = disconnect_on_failure
         self.outfile = outfile
         
@@ -54,9 +56,14 @@ class TwitterStreamer(tw.TwythonStreamer):
     # Received data
     def on_success(self, data):
         # Only collect tweets in English
-        if LANGUAGES is None or data['lang'] in LANGUAGES:
-            tweet_data = process_tweet(data)
-            self.save_to_csv(tweet_data, self.outfile)
+        if self.iteration % TwitterStreamer.PRINT_DELTA == 0:
+            TwitterStreamer.logger.info("iteration: %d", self.iteration)
+        
+        if LANGUAGES is None or data.get('lang', None) in LANGUAGES:
+            self.iteration += 1
+            self.save_raw(data, self.outfile)
+            # tweet_data = process_tweet(data)
+            # self.save_to_csv(tweet_data, self.outfile)
 
     # Problem with the API
     def on_error(self, status_code, data):
@@ -66,9 +73,14 @@ class TwitterStreamer(tw.TwythonStreamer):
             TwitterStreamer.logger.error("disconnecting streamer ...")
             self.disconnect()
 
+    def save_raw(self, tweet, outfile):
+        TwitterStreamer.logger.debug("saving tweet to output file")
+        json.dump(tweet, outfile)
+        outfile.write("\n")
+            
     # Save each tweet to csv file
     def save_to_csv(self, tweet, outfile):
-        TwitterStreamer.logger.info("saving to output file")
+        TwitterStreamer.logger.debug("saving to output file")
         writer = csv.writer(outfile)
         writer.writerow(list(tweet.values()))
         TwitterStreamer.logger.debug("tweets saved successfully")
@@ -104,17 +116,33 @@ def command_line_parser():
     parser.add_argument("-v", "--verbose", action='store_true',
                         help="verbose output")
 
+    parser.add_argument("--no_retry", action='store_false',
+                        help="verbose output")
+
     args = parser.parse_args()
 
     return args
 
-
 def main():
     options = command_line_parser()
 
-    if options.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG if options.verbose else logging.INFO,
+                        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                        datefmt='%m-%d %H:%M',
+                        filename='./fetcher.log',
+                        filemode='w')
 
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # set a format which is simpler for console use
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
+
+    ################ APPLICATION STARTS ################
+    
     cred_file = options.credentials_file
     
     if cred_file is None:
@@ -136,13 +164,21 @@ def main():
     assert all([key in creds.keys() for key in REQUIRED_FIELDS]), "json incomplete, some fields are not defined ({})".format(", ".join(REQUIRED_FIELDS))
 
     with open(options.hashtags_file, "r") as hashtags_f:
-        hashtags = set([i.strip() for i in hashtags_f.readlines()])
+        hashtags = list(set([i.strip() for i in hashtags_f.readlines()]))
 
     outfile = open(options.output, "a")
         
     stream = TwitterStreamer(creds, outfile)
 
-    stream.statuses.filter(track='twitter')
+    flag = True
+    while flag:
+        try:
+            stream.statuses.filter(track=",".join(hashtags),
+                                   language=",".join(LANGUAGES))
+        except Exception as ex:
+            console.error("error on stremer: %s", ex)
+            flag = options.no_retry
+    
     
 if __name__ == "__main__":
     main()
