@@ -110,7 +110,7 @@ def command_line_parser():
     parser.add_argument("-hf", "--hashtags_file", type=str, required=True,
                         help="hashtags file")
 
-    parser.add_argument("-o", "--output", type=str, default="fetched.csv",
+    parser.add_argument("-o", "--output", type=str, default="fetched.json",
                         help="output file name")
 
     parser.add_argument("-v", "--verbose", action='store_true',
