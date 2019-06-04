@@ -30,7 +30,7 @@ At this point you should be able to generate four (4) different tokens needed to
 In order to execute this, first clone this repository and execute the software as:
 
 ```bash
-git clone https://github.com/SkinMan95/pgr-twitter-fetcher.git
+git clone https://github.com/aanzolaavila/pgr-twitter-fetcher.git
 cd pgr-twitter-fetcher
 python3 fetcher.py --consumer_key CONSUMER_KEY \
                    --consumer_secret CONSUMER_SECRET \
